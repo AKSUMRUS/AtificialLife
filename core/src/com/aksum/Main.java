@@ -12,10 +12,32 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Container;
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Calendar;
+import java.util.HashSet;
+import java.util.Scanner;
+import java.util.Set;
+
+import javax.swing.table.TableCellEditor;
 
 public class Main extends ApplicationAdapter {
 	private static final int SCR_WIDTH = 1700,SCR_HEIGHT = 1000; // World's size
@@ -39,6 +61,15 @@ public class Main extends ApplicationAdapter {
 	TextButton energyViewButton;
 	TextButton nutritionViewButton;
 
+	TextButton saveButton;
+	TextButton loadButton;
+	String loadFileName;
+	String saveFilePath = "saves\\";
+
+	TextButton.TextButtonStyle textButtonStyle;
+	Table table;
+	Container<ScrollPane> tableContainer;
+
 	public static final int[][] field = new int[FIELD_WIDTH][FIELD_HEIGHT]; // -1 - Никого,-2 - труп, иначе индекс молекулы
 	public static final int[][] fieldSun = new int[FIELD_WIDTH][FIELD_HEIGHT];
 	public static final int[][] fieldOrganic = new int[FIELD_WIDTH][FIELD_HEIGHT];
@@ -61,7 +92,7 @@ public class Main extends ApplicationAdapter {
 
 		stage = new Stage();
 
-		createButtons();
+		createUI();
 
 		for(int i = 0;i < FIELD_WIDTH;i++){
 			for(int j = 0;j < FIELD_HEIGHT;j++){
@@ -183,6 +214,7 @@ public class Main extends ApplicationAdapter {
 		if(viewState == BASIC_VIEW){
 			batch.end();
 		}
+		stage.act(Math.min(Gdx.graphics.getDeltaTime(), 1 / 30f));
 		stage.draw();
 	}
 	
@@ -207,8 +239,7 @@ public class Main extends ApplicationAdapter {
 		generator.dispose();
 	}
 
-	void createButtons(){
-		TextButton.TextButtonStyle textButtonStyle;
+	void createUI(){
 //		Skin skin;
 //		TextureAtlas buttonAtlas;
 		Gdx.input.setInputProcessor(stage);
@@ -222,7 +253,7 @@ public class Main extends ApplicationAdapter {
 //		textButtonStyle.checked = skin.getDrawable("checked-button");
 
 		basicViewButton = new TextButton("Basic", textButtonStyle);
-		basicViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 50);
+		basicViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 20);
 		basicViewButton.addListener(new ClickListener(){
 			public void clicked(InputEvent e, float x, float y) {
 				viewState = BASIC_VIEW;
@@ -231,7 +262,7 @@ public class Main extends ApplicationAdapter {
 		stage.addActor(basicViewButton);
 
 		energyViewButton = new TextButton("Energy", textButtonStyle);
-		energyViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 80);
+		energyViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 50);
 		energyViewButton.addListener(new ClickListener(){
 			public void clicked(InputEvent e, float x, float y) {
 				viewState = ENERGY_VIEW;
@@ -240,12 +271,187 @@ public class Main extends ApplicationAdapter {
 		stage.addActor(energyViewButton);
 
 		nutritionViewButton = new TextButton("Nutrition", textButtonStyle);
-		nutritionViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 110);
+		nutritionViewButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 80);
 		nutritionViewButton.addListener(new ClickListener(){
 			public void clicked(InputEvent e, float x, float y) {
 				viewState = NUTRITION_VIEW;
 			}
 		});
 		stage.addActor(nutritionViewButton);
+
+		saveButton = new TextButton("Save", textButtonStyle);
+		saveButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 130);
+		saveButton.addListener(new ClickListener(){
+			public void clicked(InputEvent e, float x, float y) {
+				saveState();
+			}
+		});
+		stage.addActor(saveButton);
+
+		loadButton = new TextButton("Load", textButtonStyle);
+		loadButton.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 160);
+		loadButton.addListener(new ClickListener(){
+			public void clicked(InputEvent e, float x, float y) {
+				loadFile(loadFileName);
+			}
+		});
+		stage.addActor(loadButton);
+
+		Skin skin = new Skin();
+		skin.add("font",smallFont);
+
+		tableContainer = new Container<>();
+		tableContainer.setSize(90,500);
+		tableContainer.setPosition(SCR_WIDTH + 10,SCR_HEIGHT - 190 - 500);
+		tableContainer.left();
+
+		table = new Table(skin);
+
+		try {
+			Set<String> files = listFiles(saveFilePath);
+			for(final String value : files){
+				TextButton textButton = new TextButton(value.substring(0,value.length()-5), textButtonStyle);
+				textButton.addListener(new ClickListener(){
+					public void clicked(InputEvent e, float x, float y) {
+						loadFileName = value;
+					}
+				});
+
+				table.add(textButton);
+				table.row().expandX();
+
+				ScrollPane scrollPane = new ScrollPane(table);
+				scrollPane.setScrollingDisabled(true,false);
+
+				tableContainer.setActor(scrollPane);
+				stage.addActor(tableContainer);
+
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	void saveState() {
+		final String name = Calendar.getInstance().getTime().hashCode() + ".save";
+		String path = saveFilePath + name;
+		File file = new File(path);
+		TextButton textButton = new TextButton(name.substring(0,name.length()-5), textButtonStyle);
+		textButton.addListener(new ClickListener(){
+			public void clicked(InputEvent e, float x, float y) {
+				loadFileName = name;
+			}
+		});
+
+		table.add(textButton);
+		table.row().expandX();
+
+		try {
+			if (file.createNewFile()){
+				System.err.println(file.getName());
+
+				PrintWriter writer = new PrintWriter(file);
+
+				writer.println(killed);
+				writer.println(molecules.size);
+				writer.println(cnt);
+
+				for(int i = 0;i < molecules.size;i++){
+					writer.println(molecules.get(i).getX() + " " + molecules.get(i).getY());
+					for(int j = 0;j < GENOME_SIZE;j++){
+						writer.print(molecules.get(i).genome.get(j) + " ");
+					}
+					writer.println();
+				}
+
+				for(int i = 0;i < FIELD_WIDTH;i++){
+					for(int j = 0;j < FIELD_HEIGHT;j++){
+						writer.print(field[i][j] + " ");
+					}
+					writer.println();
+				}
+
+				for(int i = 0;i < FIELD_WIDTH;i++){
+					for(int j = 0;j < FIELD_HEIGHT;j++){
+						writer.print(fieldSun[i][j] + " ");
+					}
+					writer.println();
+				}
+
+				for(int i = 0;i < FIELD_WIDTH;i++){
+					for(int j = 0;j < FIELD_HEIGHT;j++){
+						writer.print(fieldOrganic[i][j] + " ");
+					}
+					writer.println();
+				}
+
+				writer.close();
+			}
+		}
+		catch (Exception e){
+			e.printStackTrace();
+		}
+	}
+
+	void loadFile(String name){
+		try {
+			FileInputStream input = new FileInputStream(saveFilePath + name);
+			Scanner in = new Scanner(input);
+
+			killed = in.nextInt();
+			int n = in.nextInt();
+			cnt = in.nextInt();
+
+			molecules.clear();
+			for(int i = 0;i < n;i++){
+				Array<Integer> array = new Array<>();
+				int x = in.nextInt();
+				int y = in.nextInt();
+				for(int j = 0;j < GENOME_SIZE;j++){
+					int a = in.nextInt();
+					array.add(a);
+				}
+				molecules.add(new Molecule(x,y,array));
+			}
+
+			for(int i = 0;i < FIELD_WIDTH;i++){
+				for(int j = 0;j < FIELD_HEIGHT;j++){
+					field[i][j] = in.nextInt();
+				}
+			}
+
+			for(int i = 0;i < FIELD_WIDTH;i++){
+				for(int j = 0;j < FIELD_HEIGHT;j++){
+					fieldSun[i][j] = in.nextInt();
+				}
+			}
+
+			for(int i = 0;i < FIELD_WIDTH;i++){
+				for(int j = 0;j < FIELD_HEIGHT;j++){
+					fieldOrganic[i][j] = in.nextInt();
+				}
+			}
+
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+
+
+	Set<String> listFiles(String dir) throws IOException{
+		final Set<String> fileList = new HashSet<>();
+
+		Files.walkFileTree(Paths.get(dir), new SimpleFileVisitor<Path>() {
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+				if(!Files.isDirectory(file)){
+					fileList.add(file.getFileName().toString());
+				}
+				return FileVisitResult.CONTINUE;
+			}
+		});
+
+		return fileList;
 	}
 }
