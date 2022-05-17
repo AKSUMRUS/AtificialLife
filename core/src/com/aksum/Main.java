@@ -331,6 +331,13 @@ public class Main extends ApplicationAdapter {
 			e.printStackTrace();
 		}
 
+		File saves = new File(saveFilePath);
+		if(!saves.exists()){
+			if(saves.mkdir()){
+				System.out.println("Good");
+			}
+		}
+
 	}
 
 	void saveState() {
