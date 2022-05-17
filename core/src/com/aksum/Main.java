@@ -320,16 +320,16 @@ public class Main extends ApplicationAdapter {
 				table.add(textButton);
 				table.row().expandX();
 
-				ScrollPane scrollPane = new ScrollPane(table);
-				scrollPane.setScrollingDisabled(true,false);
-
-				tableContainer.setActor(scrollPane);
-				stage.addActor(tableContainer);
-
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+
+		ScrollPane scrollPane = new ScrollPane(table);
+		scrollPane.setScrollingDisabled(true,false);
+
+		tableContainer.setActor(scrollPane);
+		stage.addActor(tableContainer);
 
 		File saves = new File(saveFilePath);
 		if(!saves.exists()){
